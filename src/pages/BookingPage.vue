@@ -177,7 +177,7 @@
                             <div v-if="bookingType === 'customer' && isAuthenticated"
                                 class="text-sm text-gray-600 dark:text-gray-400">
                                 Bạn đang đặt với tài khoản: <span class="font-medium">{{ currentUser?.name || '—'
-                                    }}</span>
+                                }}</span>
                             </div>
 
                             <button type="submit"
@@ -225,7 +225,9 @@ import { useRouter } from "vue-router";
 
 const router = useRouter();
 
-/* --- sample data --- */
+/* --------------------------------
+   1) DỮ LIỆU MẪU: GIỮ Y NGUYÊN
+--------------------------------- */
 const fields = ref([
     { id: 1, name: "Sân A1", location: "Khu thể thao Quận 1", price: "200.000", description: "Sân bóng đá 5 người", image: "https://tse3.mm.bing.net/th/id/OIP.tBLcp9pad-wn7tiv6Q6JhgHaFj?pid=Api&P=0&h=220" },
     { id: 2, name: "Sân A2", location: "Khu thể thao Quận 1", price: "200.000", description: "Sân bóng đá 5 người", image: "https://tse1.mm.bing.net/th/id/OIP.aVbYeGoSoJhCSg2OzKzESQHaFj?pid=Api&P=0&h=220" },
@@ -239,154 +241,168 @@ const fields = ref([
     { id: 10, name: "Sân E2", location: "Khu thể thao Quận 1", price: "800.000", description: "Sân bóng đá 11 người", image: "https://tse1.mm.bing.net/th/id/OIP.6koCM750UfzYdM8Qjj2a6QHaE8?pid=Api&P=0&h=220" },
 ]);
 
-/* --- filter --- */
+/* --------------------------------
+   2) FILTER GIÁ: DÙNG MAP THAY IF
+--------------------------------- */
 const selectedPrice = ref("all");
-const dateInput = ref(null);
-const startTimeInput = ref(null);
-const endTimeInput = ref(null);
 
+const PRICE_FILTERS = {
+    all: () => true,
+    low: (price) => price < 300000,
+    mid: (price) => price >= 300000 && price <= 500000,
+    high: (price) => price > 500000,
+};
+
+const filteredFields = computed(() => {
+    return fields.value.filter((field) => {
+        // "200.000" -> 200000
+        const price = parseInt(field.price.replace(/\./g, ""), 10);
+        return PRICE_FILTERS[selectedPrice.value](price);
+    });
+});
+
+/* --------------------------------
+   3) FORM: HẰNG SỐ + HÀM RESET
+--------------------------------- */
 const today = new Date().toISOString().split("T")[0];
 
-const form = ref({
+const DEFAULT_FORM = {
     fieldId: "",
     date: "",
     startTime: "",
     endTime: "",
     name: "",
     phone: "",
-});
+};
 
+const form = ref({ ...DEFAULT_FORM });
+
+function resetForm() {
+    form.value = { ...DEFAULT_FORM };
+}
+
+/* --------------------------------
+   4) AUTH (GIẢ LẬP NHƯ CŨ)
+--------------------------------- */
+const isAuthenticated = ref(false); // TODO: bind auth thật
+const currentUser = ref(null);      // { id, name, email } khi đăng nhập
+
+function closeLoginPrompt() {
+    showLoginPrompt.value = false;
+}
+
+function gotoLogin() {
+    closeLoginPrompt();
+    router.push({ name: "login", query: { redirect: router.currentRoute.value.fullPath } });
+}
+
+function gotoRegister() {
+    closeLoginPrompt();
+    router.push({
+        name: "login",
+        query: { action: "register", redirect: router.currentRoute.value.fullPath },
+    });
+}
+
+/* --------------------------------
+   5) BOOKING: CHIA NHỎ HÀM RÕ NGHĨA
+--------------------------------- */
 const showBooking = ref(false);
-
-/* --- new state for booking type --- */
-const bookingType = ref("guest"); // 'guest' or 'customer'
-const bookingStep = ref("chooseType"); // chooseType | requireLogin | form
-
-/* --- mock auth state (replace with real auth) --- */
-const isAuthenticated = ref(false); // TODO: bind to real auth state
-const currentUser = ref(null); // { id, name, email } when authenticated
-
-/* --- new: login prompt modal --- */
+const bookingType = ref("guest");       // 'guest' | 'customer'
+const bookingStep = ref("chooseType");  // 'chooseType' | 'requireLogin' | 'form'
 const showLoginPrompt = ref(false);
+
+function openBooking(field) {
+    form.value.fieldId = field.id;
+    if (isAuthenticated.value) {
+        startCustomerBooking();
+    } else {
+        showLoginPrompt.value = true;
+    }
+}
+
+function startCustomerBooking() {
+    bookingType.value = "customer";
+    bookingStep.value = "form";
+    if (currentUser.value) {
+        form.value.name = currentUser.value.name || "";
+        form.value.phone = currentUser.value.phone || "";
+    }
+    showBooking.value = true;
+}
+
+function continueAsGuest() {
+    showLoginPrompt.value = false;
+    bookingType.value = "guest";
+    bookingStep.value = "form";
+    showBooking.value = true;
+}
+
+function proceedBookingType() {
+    if (bookingType.value === "customer") {
+        if (!isAuthenticated.value) {
+            bookingStep.value = "requireLogin";
+            return;
+        }
+        // Đã đăng nhập: prefill
+        if (currentUser.value) {
+            form.value.name = currentUser.value.name || "";
+            form.value.phone = currentUser.value.phone || "";
+        }
+    }
+    bookingStep.value = "form";
+}
+
+function closeBooking() {
+    showBooking.value = false;
+    bookingStep.value = "chooseType";
+    resetForm();
+}
+
+/* --------------------------------
+   6) SUBMIT: TÁCH VALIDATION
+--------------------------------- */
+function validateForm() {
+    if (!form.value.date || !form.value.startTime || !form.value.endTime) {
+        alert("Vui lòng chọn ngày và giờ hợp lệ.");
+        return false;
+    }
+    if (bookingType.value === "guest" && (!form.value.name || !form.value.phone)) {
+        alert("Vui lòng nhập tên và số điện thoại.");
+        return false;
+    }
+    return true;
+}
+
+function submitBooking() {
+    if (!validateForm()) return;
+
+    alert(
+        `✅ Đặt sân thành công!\n` +
+        `Loại: ${bookingType.value === "guest" ? "Khách vãng lai" : "Khách hàng"}\n` +
+        `Sân: ${form.value.fieldId}\n` +
+        `Ngày: ${form.value.date}\n` +
+        `Giờ: ${form.value.startTime} - ${form.value.endTime}\n` +
+        `Người đặt: ${form.value.name || (currentUser.value?.name || "—")}`
+    );
+
+    closeBooking();
+}
+
+/* --------------------------------
+   7) TIỆN ÍCH KHÁC (template dùng)
+--------------------------------- */
+const dateInput = ref(null);
+const startTimeInput = ref(null);
+const endTimeInput = ref(null);
 
 const openDatePicker = () => dateInput.value?.showPicker?.();
 const openStartTimePicker = () => startTimeInput.value?.showPicker?.();
 const openEndTimePicker = () => endTimeInput.value?.showPicker?.();
 
-const filteredFields = computed(() => {
-    return fields.value.filter((field) => {
-        const price = parseInt(field.price.replace(".", ""));
-        if (selectedPrice.value === "low") return price < 300000;
-        if (selectedPrice.value === "mid") return price >= 300000 && price <= 500000;
-        if (selectedPrice.value === "high") return price > 500000;
-        return true;
-    });
-});
-
 const viewDetails = (field) => router.push(`/field/${field.id}`);
-
-/* OPEN BOOKING: tự check auth
-   - nếu authenticated -> mở popup đặt sân ngay (bỏ bước chọn loại)
-   - nếu chưa -> mở popup nhắc đăng nhập/đăng ký */
-const openBooking = (field) => {
-    form.value.fieldId = field.id;
-
-    if (isAuthenticated.value) {
-        // Nếu đã đăng nhập: mở popup và vào thẳng form
-        bookingType.value = "customer";
-        bookingStep.value = "form";
-        // prefill user info nếu có
-        if (currentUser.value) {
-            form.value.name = currentUser.value.name || "";
-            form.value.phone = currentUser.value.phone || "";
-        }
-        showBooking.value = true;
-    } else {
-        // Nếu chưa đăng nhập: show modal gợi ý đăng nhập hoặc tiếp tục là guest
-        showLoginPrompt.value = true;
-    }
-};
-
-const closeBooking = () => {
-    showBooking.value = false;
-    bookingStep.value = "chooseType";
-    form.value = { fieldId: "", date: "", startTime: "", endTime: "", name: "", phone: "" };
-};
-
-const closeLoginPrompt = () => {
-    showLoginPrompt.value = false;
-};
-
-/* Called when user confirms the type selection in booking modal */
-const proceedBookingType = () => {
-    if (bookingType.value === "customer") {
-        if (!isAuthenticated.value) {
-            // require login
-            bookingStep.value = "requireLogin";
-            return;
-        }
-        // if authenticated, proceed to form (we can prefill name/phone)
-        if (currentUser.value) {
-            form.value.name = currentUser.value.name || "";
-            form.value.phone = currentUser.value.phone || "";
-        }
-        bookingStep.value = "form";
-        return;
-    }
-    // guest -> go to form
-    bookingStep.value = "form";
-};
-
-const gotoLogin = () => {
-    // redirect to login page (replace route if your route differs)
-    // nếu gọi từ login prompt modal thì đóng modal trước
-    closeLoginPrompt();
-    router.push({ name: "login", query: { redirect: router.currentRoute.value.fullPath } });
-};
-
-const gotoRegister = () => {
-    closeLoginPrompt();
-    router.push({
-        name: "login", query: {
-            action: 'register',
-            redirect: router.currentRoute.value.fullPath
-        }
-    });
-};
-
-const continueAsGuest = () => {
-    // close login prompt and open booking modal as guest
-    showLoginPrompt.value = false;
-    bookingType.value = "guest";
-    bookingStep.value = "form";
-    showBooking.value = true;
-};
-
-const submitBooking = () => {
-    // simple validation (time logic can be extended)
-    if (!form.value.date || !form.value.startTime || !form.value.endTime) {
-        alert("Vui lòng chọn ngày và giờ hợp lệ.");
-        return;
-    }
-    if (bookingType.value === "guest") {
-        if (!form.value.name || !form.value.phone) {
-            alert("Vui lòng nhập tên và số điện thoại.");
-            return;
-        }
-    } else if (bookingType.value === "customer") {
-        // for customer, we assume authenticated; otherwise user would be redirected earlier
-    }
-
-    // thực tế: gửi request lên backend ở đây
-    alert(
-        `✅ Đặt sân thành công!\nLoại: ${bookingType.value === "guest" ? "Khách vãng lai" : "Khách hàng"}\nSân: ${form.value.fieldId}\nNgày: ${form.value.date}\nGiờ: ${form.value.startTime} - ${form.value.endTime}\nNgười đặt: ${form.value.name || (currentUser.value?.name || '—')}`
-    );
-
-    // reset
-    closeBooking();
-};
-
 </script>
+
 
 <style scoped>
 .fade-slide-enter-active,
@@ -404,5 +420,3 @@ const submitBooking = () => {
     transform: translateY(20px);
 }
 </style>
-
-
